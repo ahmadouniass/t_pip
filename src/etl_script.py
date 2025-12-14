@@ -217,17 +217,42 @@ def run_prices_etl(
     # 4. ÉCRITURE DES DONNÉES TRANSFORMÉES (CURATED) VERS S3
     # -------------------------------------
     written_uris = []
-    if not final_df.empty:
-        print("Écriture des données transformées (CURATED)...")
-        # Écriture partitionnée par data_date (comme dans votre code original)
-        for data_date, part_df in final_df.groupby("data_date"):
-            key_prefix = curated_prices_partition(curated_prefix, interval, str(data_date))
-            filename = f"part-{run_id}.parquet"
-            try:
-                uri = write_parquet_to_s3(part_df, bucket=bucket, key_prefix=key_prefix, filename=filename, s3_client=s3_client)
-                written_uris.append(uri)
-            except Exception as e:
-                print(f"ERREUR: Échec de l'écriture CURATED pour {data_date} sur S3: {e}")
+    if not final_df.empty:
+        print("Écriture des données transformées (CURATED)...")
+        
+        # >>> CORRECTION MAJEURE À INSERER ICI : <<<
+        # Supprimer les colonnes utilisées pour le partitionnement S3
+        # C'est cette action qui empêche la duplication dans Glue/Athena
+        final_df = final_df.drop(columns=['interval', 'data_date'])
+
+        # Note: Le .groupby("data_date") suivant est toujours valide 
+        # car data_date est la clé de groupement/partitionnement du DAF
+        # et doit exister juste avant le groupby.
+        # Si data_date est strictement nécessaire pour le groupby, nous devons la retirer *après* l'itération.
+        
+        # --- Approche Plus Sûre (Suppression à l'intérieur de la boucle) ---
+        # Étant donné que le 'groupby' utilise 'data_date', 
+        # nous devons supprimer les colonnes à l'intérieur de la boucle d'écriture
+        # pour nous assurer qu'elles ne sont pas dans le Parquet.
+        for data_date, part_df in final_df.groupby("data_date"):
+            
+            # <<< CORRECTION DÉPLACÉE ICI POUR LA SÉCURITÉ >>>
+            # On enlève les colonnes de partitionnement AVANT l'écriture
+            part_df_to_write = part_df.drop(columns=['interval', 'data_date'])
+            # <<< FIN DE LA CORRECTION DÉPLACÉE >>>
+            
+            key_prefix = curated_prices_partition(curated_prefix, interval, str(data_date))
+            filename = f"part-{run_id}.parquet"
+            try:
+                # On écrit le DataFrame corrigé (sans les colonnes redondantes)
+                uri = write_parquet_to_s3(
+                    part_df_to_write, # Utilisez le DataFrame corrigé ici
+                    bucket=bucket, 
+                    key_prefix=key_prefix, 
+                    filename=filename, 
+                    s3_client=s3_client
+                )
+                written_uris.append(uri)
         
     return {
         "raw_uri": raw_written_uri,
