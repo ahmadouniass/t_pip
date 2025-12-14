@@ -18,7 +18,7 @@ def extract_transform_data(ticker):
     print(f"Extraction des données pour le ticker : {ticker}...")
     
     # 1. Extraction des données historiques (les 5 dernières années)
-    data = yf.download(ticker, period="5yo")
+    data = yf.download(ticker, period="5y")
     
     if data.empty:
         print(f"Erreur: Aucune donnée trouvée pour {ticker}")
@@ -81,3 +81,5 @@ if __name__ == "__main__":
     
     if df_transformed is not None:
         load_data_to_s3(df_transformed, BUCKET_NAME, S3_PREFIX)
+
+    print("It's ok now")
