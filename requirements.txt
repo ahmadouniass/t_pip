@@ -1,0 +1,4 @@
+yfinance
+pandas
+pyarrow  # Pour stocker sur S3 au format Parquet (très performant et professionnel)
+boto3    # Pour interagir avec S3
