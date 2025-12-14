@@ -1,30 +1,31 @@
 version: 0.2
 env:
   variables:
+    # Laissez ces variables ici. Elles sont LUES depuis la console CodeBuild.
     AWS_ACCOUNT_ID: "164829817152"
     AWS_DEFAULT_REGION: "eu-west-3"
     IMAGE_REPO_NAME: "etl-finance-repo" 
-    IMAGE_TAG: "latest" # Changé pour 'latest' pour simplifier le test
+    IMAGE_TAG: "latest" 
     
 phases:
   pre_build:
     commands:
-      # Connexion à ECR
       - echo "Logging in to Amazon ECR..."
-      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
-      # Définition de l'URI complète
-      - IMAGE_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+      # Utilisation plus sécurisée des variables dans le shell :
+      - ECR_LOGIN_COMMAND=$(aws ecr get-login-password --region $AWS_DEFAULT_REGION)
+      - ECR_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com"
+      - echo $ECR_LOGIN_COMMAND | docker login --username AWS --password-stdin $ECR_URI
+      
+      - IMAGE_URI=$ECR_URI/$IMAGE_REPO_NAME:$IMAGE_TAG
   
   build:
     commands:
-      # Construction de l'image Docker
       - echo "Building the Docker image..."
       - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG .
       - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $IMAGE_URI
       
   post_build:
     commands:
-      # Envoi (Push) de l'image vers ECR
       - echo "Pushing the Docker image to ECR..."
       - docker push $IMAGE_URI
       - echo "Build succeeded for image: $IMAGE_URI"
