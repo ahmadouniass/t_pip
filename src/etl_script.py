@@ -216,7 +216,6 @@ def run_prices_etl(
             # Ces colonnes sont déjà présentes dans le chemin S3 (data_date et interval)
             # Les retirer du DataFrame Parquet empêche la duplication dans Glue/Athena.
             part_df_to_write = part_df.drop(columns=['interval', 'data_date'])
-            
             key_prefix = curated_prices_partition(curated_prefix, interval, str(data_date))
             filename = f"part-{run_id}.parquet"
             try:
