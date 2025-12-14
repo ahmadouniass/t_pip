@@ -1,7 +1,6 @@
 version: 0.2
 env:
   variables:
-    # Laissez ces variables ici. Elles sont LUES depuis la console CodeBuild.
     AWS_ACCOUNT_ID: "164829817152"
     AWS_DEFAULT_REGION: "eu-west-3"
     IMAGE_REPO_NAME: "etl-finance-repo" 
@@ -11,7 +10,6 @@ phases:
   pre_build:
     commands:
       - echo "Logging in to Amazon ECR..."
-      # Utilisation plus sécurisée des variables dans le shell :
       - ECR_LOGIN_COMMAND=$(aws ecr get-login-password --region $AWS_DEFAULT_REGION)
       - ECR_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com"
       - echo $ECR_LOGIN_COMMAND | docker login --username AWS --password-stdin $ECR_URI
