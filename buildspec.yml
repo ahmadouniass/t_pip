@@ -3,7 +3,7 @@ version: 0.2
 env:
   variables:
     AWS_ACCOUNT_ID: "164829817152"
-    AWS_DEFAULT_REGION: "eu-west-3>"
+    AWS_DEFAULT_REGION: "eu-west-3"
     IMAGE_REPO_NAME: "etl-finance-repo" 
     IMAGE_TAG: "$CODEBUILD_RESOLVED_SOURCE_VERSION" 
 
