@@ -5,15 +5,10 @@ import pandas as pd
 from typing import Iterable, Any
 import datetime as dt
 import uuid
+import os
+import io
 
 # --- ASSUMPTIONS D'IMPORTS ---
-# Ces imports sont basés sur les fonctions que votre code utilise implicitement.
-# Vous devez les adapter si l'emplacement des fichiers change.
-# Exemple:
-# from src.io.s3 import write_parquet_to_s3
-# from src.utils.data import download_prices, split_multi_ticker
-# from src.utils.data_quality import check_ohlc_consistency, check_negative_volume, combine_issues
-# from src.utils.paths import curated_prices_partition
 
 # Simuler les imports si le code est dans un seul fichier
 def download_prices(tickers: list[str], interval: str, period: str) -> pd.DataFrame:
@@ -26,8 +21,7 @@ def download_prices(tickers: list[str], interval: str, period: str) -> pd.DataFr
     if isinstance(data.columns, pd.MultiIndex):
         return data
     else:
-        # Convertir en format multi-index pour être compatible avec split_multi_ticker
-        # Ceci est une simplification. Votre fonction actuelle doit gérer cela.
+        # Simplification pour compatibilité
         if len(tickers) == 1:
              return {tickers[0]: data}
         return data
@@ -51,14 +45,14 @@ def split_multi_ticker(raw_df: pd.DataFrame, tickers: list[str]) -> dict[str, pd
 
 def write_parquet_to_s3(df: pd.DataFrame, bucket: str, key_prefix: str, filename: str, s3_client: Any) -> str:
     """ Simule l'écriture Parquet vers S3. (Implémentation réelle requiert boto3) """
-    import io
     # Initialisation de S3 client réel si non fourni (pour un environnement ECS)
     if s3_client is None:
         import boto3
         s3_client = boto3.client('s3')
         
     out_buffer = io.BytesIO()
-    df.to_parquet(out_buffer, index=True) # Utilisation de l'index (Date/Datetime)
+    # ATTENTION: Utiliser index=False si l'index (Date/Datetime) a été réinitialisé en colonne 'datetime'
+    df.to_parquet(out_buffer, index=False) 
     
     key = f"{key_prefix}/{filename}"
     s3_client.put_object(Bucket=bucket, Key=key, Body=out_buffer.getvalue())
@@ -82,11 +76,10 @@ TICKERS_TO_EXTRACT = [
     "^GSPC", "^IXIC", "^DJI", "EURUSD=X", "GBPUSD=X", "BTC-USD", "ETH-USD",
 ]
 DEFAULT_INTERVAL = "1d" # Intervalle par défaut
-DEFAULT_PERIOD = "1y"   # Période par défaut
+DEFAULT_PERIOD = "1y"  # Période par défaut
 
 
 # --- FONCTION DE TRANSFORMATION (CURATED) ---
-# Votre code de normalisation (Légèrement nettoyé pour l'exemple)
 def _normalize_one(ticker: str, df: pd.DataFrame, interval: str, run_id: str, ingested_at) -> pd.DataFrame:
     # index -> datetime
     out = df.reset_index().rename(columns={"Date": "datetime"})
@@ -95,7 +88,6 @@ def _normalize_one(ticker: str, df: pd.DataFrame, interval: str, run_id: str, in
     out.columns = [c.lower().replace(" ", "_") for c in out.columns]
 
     # ... (Vos vérifications de colonnes adj_close et open/high/low/close/volume) ...
-    # Nous simplifions ici :
     for col in ["open", "high", "low", "close", "volume", "adj_close"]:
         if col not in out.columns:
             out[col] = pd.NA
@@ -133,7 +125,7 @@ def run_prices_etl(
     interval: str,
     period: str,
     bucket: str,
-    raw_prefix: str,    # NOUVEAU: Préfixe pour le RAW (ex: 'raw')
+    raw_prefix: str,
     curated_prefix: str,
     run_id: str,
     ingested_at,
@@ -151,13 +143,10 @@ def run_prices_etl(
     if not raw_multi_df.empty:
         print("Préparation et écriture des données brutes (RAW)...")
         
-        # Le RAW doit conserver la structure de la source autant que possible
-        # Nous prenons le DataFrame et l'enregistrons en conservant l'index pour la traçabilité
-        
         # Pour le RAW, nous allons 'flatten' la structure yfinance (MultiIndex)
         if isinstance(raw_multi_df.columns, pd.MultiIndex):
-             raw_df_to_save = raw_multi_df.stack(level=0).reset_index(names=['datetime', 'ticker'])
-             raw_df_to_save.columns = raw_df_to_save.columns.map(lambda x: x[1].lower() if isinstance(x, tuple) else x.lower())
+              raw_df_to_save = raw_multi_df.stack(level=0).reset_index(names=['datetime', 'ticker'])
+              raw_df_to_save.columns = raw_df_to_save.columns.map(lambda x: x[1].lower() if isinstance(x, tuple) else x.lower())
         else:
             raw_df_to_save = raw_multi_df.reset_index()
 
@@ -217,42 +206,31 @@ def run_prices_etl(
     # 4. ÉCRITURE DES DONNÉES TRANSFORMÉES (CURATED) VERS S3
     # -------------------------------------
     written_uris = []
-    if not final_df.empty:
-        print("Écriture des données transformées (CURATED)...")
-        
-        # >>> CORRECTION MAJEURE À INSERER ICI : <<<
-        # Supprimer les colonnes utilisées pour le partitionnement S3
-        # C'est cette action qui empêche la duplication dans Glue/Athena
-        final_df = final_df.drop(columns=['interval', 'data_date'])
-
-        # Note: Le .groupby("data_date") suivant est toujours valide 
-        # car data_date est la clé de groupement/partitionnement du DAF
-        # et doit exister juste avant le groupby.
-        # Si data_date est strictement nécessaire pour le groupby, nous devons la retirer *après* l'itération.
-        
-        # --- Approche Plus Sûre (Suppression à l'intérieur de la boucle) ---
-        # Étant donné que le 'groupby' utilise 'data_date', 
-        # nous devons supprimer les colonnes à l'intérieur de la boucle d'écriture
-        # pour nous assurer qu'elles ne sont pas dans le Parquet.
-        for data_date, part_df in final_df.groupby("data_date"):
-            
-            # <<< CORRECTION DÉPLACÉE ICI POUR LA SÉCURITÉ >>>
-            # On enlève les colonnes de partitionnement AVANT l'écriture
-            part_df_to_write = part_df.drop(columns=['interval', 'data_date'])
-            # <<< FIN DE LA CORRECTION DÉPLACÉE >>>
-            
-            key_prefix = curated_prices_partition(curated_prefix, interval, str(data_date))
-            filename = f"part-{run_id}.parquet"
-            try:
-                # On écrit le DataFrame corrigé (sans les colonnes redondantes)
-                uri = write_parquet_to_s3(
-                    part_df_to_write, # Utilisez le DataFrame corrigé ici
-                    bucket=bucket, 
-                    key_prefix=key_prefix, 
-                    filename=filename, 
-                    s3_client=s3_client
-                )
-                written_uris.append(uri)
+    if not final_df.empty:
+        print("Écriture des données transformées (CURATED)...")
+        
+        # C'est la boucle de groupement par partition (data_date)
+        for data_date, part_df in final_df.groupby("data_date"):
+            
+            # <<< CORRECTION CRITIQUE ICI : Supprimer les colonnes de partitionnement avant l'écriture >>>
+            # Ces colonnes sont déjà présentes dans le chemin S3 (data_date et interval)
+            # Les retirer du DataFrame Parquet empêche la duplication dans Glue/Athena.
+            part_df_to_write = part_df.drop(columns=['interval', 'data_date'])
+            
+            key_prefix = curated_prices_partition(curated_prefix, interval, str(data_date))
+            filename = f"part-{run_id}.parquet"
+            try:
+                # Écriture du DataFrame corrigé (sans les colonnes redondantes)
+                uri = write_parquet_to_s3(
+                    part_df_to_write, # Utilisation du DataFrame corrigé
+                    bucket=bucket, 
+                    key_prefix=key_prefix, 
+                    filename=filename, 
+                    s3_client=s3_client
+                )
+                written_uris.append(uri)
+            except Exception as e:
+                print(f"ERREUR: Échec de l'écriture CURATED pour {data_date} sur S3: {e}")
         
     return {
         "raw_uri": raw_written_uri,
@@ -264,8 +242,8 @@ def run_prices_etl(
 
 # --- POINT D'ENTRÉE PRINCIPAL (Exemple pour l'exécution Fargate) ---
 if __name__ == "__main__":
+    
     # Récupération des variables d'environnement (passées par la Task Definition)
-    import os
     
     # Assurez-vous que ces variables sont configurées dans votre Task Definition
     BUCKET_NAME = os.environ.get("S3_BUCKET", "yf-pipeline-ensae-dev") 
