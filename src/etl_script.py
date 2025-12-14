@@ -18,7 +18,7 @@ def extract_transform_data(ticker):
     print(f"Extraction des données pour le ticker : {ticker}...")
     
     # 1. Extraction des données historiques (les 5 dernières années)
-    data = yf.download(ticker, period="5y")
+    data = yf.download(ticker, period="1mo")
     
     if data.empty:
         print(f"Erreur: Aucune donnée trouvée pour {ticker}")
