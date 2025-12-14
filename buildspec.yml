@@ -1,12 +1,10 @@
 version: 0.2
 # Définition des variables qui seront utilisées par CodeBuild
-# Ces variables doivent être configurées dans le projet CodeBuild (voir 3.3)
 env:
   variables:
-    AWS_ACCOUNT_ID: "<VOTRE ID DE COMPTE AWS>"
-    AWS_DEFAULT_REGION: "<VOTRE REGION AWS, ex: eu-west-3>"
-    IMAGE_REPO_NAME: "etl-finance-repo" # Le nom du dépôt ECR créé ci-dessus
-    # Le tag sera la version du commit Git, ce qui est très pro
+    AWS_ACCOUNT_ID: "164829817152"
+    AWS_DEFAULT_REGION: "eu-west-3>"
+    IMAGE_REPO_NAME: "etl-finance-repo" 
     IMAGE_TAG: "$CODEBUILD_RESOLVED_SOURCE_VERSION" 
 
 phases:
@@ -33,6 +31,4 @@ phases:
       - docker push $IMAGE_URI
       - echo "Latest image URI: $IMAGE_URI"
 
-# Artifacts : Optionnel ici, mais bonne pratique
-# files:
-#   - 'imagedefinitions.json'
+# Supprimez toute autre ligne superflue ou mal indentée à la fin du fichier.
