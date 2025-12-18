@@ -63,7 +63,7 @@ TICKERS_TO_EXTRACT = [
 # Définition des intervalles à traiter
 INTERVALS_CONFIG = {
     "1d": "2y",  # Quotidien sur 2 an
-    "1h": "2y"   # Horaire sur 2 ans (limite max yfinance pour 1h)
+    "1h": "6mo"   # Horaire sur 2 ans (limite max yfinance pour 1h)
 }
 
 # --- FONCTION DE TRANSFORMATION (CURATED) ---
